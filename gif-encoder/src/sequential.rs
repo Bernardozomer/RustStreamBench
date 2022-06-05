@@ -7,11 +7,23 @@ use ffmpeg::frame::Video;
 use ffmpeg::media::Type;
 use ffmpeg::software::scaling::{Context, Flags};
 
+struct DecodedVideo {
+    pub ictx: ffmpeg::format::context::Input,
+    pub video_stream_index: usize,
+    pub decoder: ffmpeg::decoder::Video,
+    pub scaler: Context,
+}
+
 pub fn encode_gif(filename: &str) -> Result<(), ffmpeg::Error> {
     // Get pixel data from video
-    let mut pixels: Vec<u8> = dump_pixels_from_video(filename)?;
+    let mut video = decode_video(filename)?;
+    let mut pixels: Vec<u8> = dump_pixels_from_video(&mut video)?;
     // Create frame from data
-    let frame = gif::Frame::from_rgb(1280, 720, &mut *pixels);
+    let frame = gif::Frame::from_rgb(
+        video.scaler.input().width as u16,
+        video.scaler.input().height as u16,
+        &mut *pixels
+    );
     // Create encoder
     let mut image = File::create(format!("{}.gif", filename)).unwrap();
     let mut encoder = gif::Encoder::new(&mut image, frame.width, frame.height, &[]).unwrap();
@@ -21,8 +33,42 @@ pub fn encode_gif(filename: &str) -> Result<(), ffmpeg::Error> {
     Ok(())
 }
 
-fn dump_pixels_from_video(filename: &str) -> Result<Vec<u8>, ffmpeg::Error> {
-    let mut ictx = input(&filename)?;
+fn dump_pixels_from_video(video: &mut DecodedVideo) -> Result<Vec<u8>, ffmpeg::Error> {
+    let mut pixels: Vec<u8> = Vec::new();
+    let mut frame_index = 0;
+
+    let mut receive_and_process_decoded_frames =
+        |decoder: &mut ffmpeg::decoder::Video| -> Result<(), ffmpeg::Error> {
+            let mut decoded = Video::empty();
+            while decoder.receive_frame(&mut decoded).is_ok() {
+                let mut rgb_frame = Video::empty();
+                video.scaler.run(&decoded, &mut rgb_frame)?;
+
+                if pixels.len() <= (video.scaler.input().width * video.scaler.input().height * 2).try_into().unwrap() {
+                    pixels.extend_from_slice(rgb_frame.data(0));
+                }
+
+                frame_index += 1;
+            }
+
+            Ok(())
+        };
+
+    for (stream, packet) in video.ictx.packets() {
+        if stream.index() == video.video_stream_index {
+            video.decoder.send_packet(&packet)?;
+            receive_and_process_decoded_frames(&mut video.decoder)?;
+        }
+    }
+
+    video.decoder.send_eof()?;
+    receive_and_process_decoded_frames(&mut video.decoder)?;
+
+    Ok(pixels)
+}
+
+fn decode_video(filename: &str) -> Result<DecodedVideo, ffmpeg::Error> {
+    let ictx = input(&filename)?;
 
     let input = ictx
         .streams()
@@ -34,9 +80,9 @@ fn dump_pixels_from_video(filename: &str) -> Result<Vec<u8>, ffmpeg::Error> {
         input.parameters()
     )?;
 
-    let mut decoder = context_decoder.decoder().video()?;
+    let decoder = context_decoder.decoder().video()?;
 
-    let mut scaler = Context::get(
+    let scaler = Context::get(
         decoder.format(),
         decoder.width(),
         decoder.height(),
@@ -46,35 +92,11 @@ fn dump_pixels_from_video(filename: &str) -> Result<Vec<u8>, ffmpeg::Error> {
         Flags::BILINEAR,
     )?;
 
-    let mut pixels: Vec<u8> = Vec::new();
-    let mut frame_index = 0;
-
-    let mut receive_and_process_decoded_frames =
-        |decoder: &mut ffmpeg::decoder::Video| -> Result<(), ffmpeg::Error> {
-            let mut decoded = Video::empty();
-            while decoder.receive_frame(&mut decoded).is_ok() {
-                let mut rgb_frame = Video::empty();
-                scaler.run(&decoded, &mut rgb_frame)?;
-
-                if pixels.len() <= 0 {
-                    pixels.extend_from_slice(rgb_frame.data(0));
-                }
-
-                frame_index += 1;
-            }
-
-            Ok(())
-        };
-
-    for (stream, packet) in ictx.packets() {
-        if stream.index() == video_stream_index {
-            decoder.send_packet(&packet)?;
-            receive_and_process_decoded_frames(&mut decoder)?;
-        }
-    }
-
-    decoder.send_eof()?;
-    receive_and_process_decoded_frames(&mut decoder)?;
-
-    Ok(pixels)
+    return Ok(DecodedVideo {
+        ictx,
+        video_stream_index,
+        decoder,
+        scaler,
+    })
 }
+
