@@ -15,20 +15,31 @@ struct DecodedVideo {
 }
 
 pub fn encode_gif(filename: &str) -> Result<(), ffmpeg::Error> {
-    // Get pixel data from video
     let mut video = decode_video(filename)?;
-    let mut pixels: Vec<u8> = dump_pixels_from_video(&mut video)?;
-    // Create frame from data
-    let frame = gif::Frame::from_rgb(
-        video.scaler.input().width as u16,
-        video.scaler.input().height as u16,
-        &mut *pixels
-    );
-    // Create encoder
+    let pixels: Vec<u8> = dump_pixels_from_video(&mut video)?;
+
+    let mut pixels_per_frame: Vec<&[u8]> = pixels.chunks(
+        (video.scaler.input().width * video.scaler.input().height * 3).try_into().unwrap()
+    ).collect();
+
     let mut image = File::create(format!("{}.gif", filename)).unwrap();
-    let mut encoder = gif::Encoder::new(&mut image, frame.width, frame.height, &[]).unwrap();
-    // Write frame to file
-    encoder.write_frame(&frame).unwrap();
+
+    let mut encoder = gif::Encoder::new(
+        &mut image,
+        video.scaler.input().width.try_into().unwrap(),
+        video.scaler.input().height.try_into().unwrap(),
+        &[]
+    ).unwrap();
+
+    for frame_pixels in pixels_per_frame.iter_mut() {
+        let frame = gif::Frame::from_rgb(
+            video.scaler.input().width as u16,
+            video.scaler.input().height as u16,
+            &mut *frame_pixels
+        );
+
+        encoder.write_frame(&frame).unwrap();
+    }
 
     Ok(())
 }
@@ -37,16 +48,19 @@ fn dump_pixels_from_video(video: &mut DecodedVideo) -> Result<Vec<u8>, ffmpeg::E
     let mut pixels: Vec<u8> = Vec::new();
     let mut frame_index = 0;
 
+    dbg!(&video.scaler.input().width);
+    dbg!(&video.scaler.input().height);
+
     let mut receive_and_process_decoded_frames =
         |decoder: &mut ffmpeg::decoder::Video| -> Result<(), ffmpeg::Error> {
             let mut decoded = Video::empty();
+
             while decoder.receive_frame(&mut decoded).is_ok() {
                 let mut rgb_frame = Video::empty();
                 video.scaler.run(&decoded, &mut rgb_frame)?;
+                pixels.extend_from_slice(rgb_frame.data(0));
 
-                if pixels.len() <= (video.scaler.input().width * video.scaler.input().height * 2).try_into().unwrap() {
-                    pixels.extend_from_slice(rgb_frame.data(0));
-                }
+                dbg!(&pixels.len());
 
                 frame_index += 1;
             }
