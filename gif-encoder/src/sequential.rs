@@ -70,7 +70,7 @@ pub fn encode_gif(filename: &str) -> Result<()> {
  * Inspired by [this example](https://github.com/zmwangx/rust-ffmpeg/blob/22ad8b959879efa028c33f71cc286b519eae8066/examples/dump-frames.rs).
 */
 fn get_video_data(video: &mut DecodedVideo) -> Result<Vec<u8>> {
-    let mut pixels: Vec<u8> = Vec::new();
+    let mut data: Vec<u8> = Vec::new();
     let mut frame_index = 0;
 
     let mut receive_and_process_decoded_frames =
@@ -80,7 +80,7 @@ fn get_video_data(video: &mut DecodedVideo) -> Result<Vec<u8>> {
             while decoder.receive_frame(&mut decoded).is_ok() {
                 let mut rgb_frame = Video::empty();
                 video.scaler.run(&decoded, &mut rgb_frame)?;
-                pixels.extend_from_slice(rgb_frame.data(0));
+                data.extend_from_slice(rgb_frame.data(0));
                 frame_index += 1;
             }
 
@@ -97,7 +97,7 @@ fn get_video_data(video: &mut DecodedVideo) -> Result<Vec<u8>> {
     video.decoder.send_eof()?;
     receive_and_process_decoded_frames(&mut video.decoder)?;
 
-    Ok(pixels)
+    Ok(data)
 }
 
 fn decode_video(filename: &str) -> Result<DecodedVideo> {
