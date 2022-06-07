@@ -1,9 +1,12 @@
 extern crate ffmpeg_next as ffmpeg;
 
 use std::fs::File;
-use std::time::{SystemTime};
+use std::time::SystemTime;
 
-use { 
+use anyhow::Context as AnyhowContext;
+use anyhow::Result;
+
+use {
     ffmpeg::format::{Pixel, input},
     ffmpeg::frame::Video,
     ffmpeg::media::Type,
@@ -17,55 +20,67 @@ struct DecodedVideo {
     pub scaler: Context,
 }
 
-pub fn encode_gif(filename: &str) -> Result<(), ffmpeg::Error> {
+pub fn encode_gif(filename: &str) -> Result<()> {
     let start = SystemTime::now();
-    let mut video = decode_video(filename)?;
-    let pixels: Vec<u8> = dump_pixels_from_video(&mut video)?;
 
-    let mut pixels_per_frame: Vec<&[u8]> = pixels.chunks(
-        (video.scaler.input().width * video.scaler.input().height * 3).try_into().unwrap()
+    // Get video data.
+    let mut video = decode_video(filename)?;
+    let data: Vec<u8> = get_video_data(&mut video)?;
+    let width = video.scaler.input().width;
+    let height = video.scaler.input().height;
+
+    // Separate the video data into frames.
+    let mut data_per_frame: Vec<&[u8]> = data.chunks(
+        (width * height * 3).try_into()?
     ).collect();
 
-    // TODO: tem que tirar o .mp4 do filename pra salvar o gif?
-    let mut image = File::create(format!("{}.gif", filename)).unwrap();
+    // Encode the GIF frames and write them to a file.
+    let mut image = File::create(format!("{}.gif", filename))
+        .context("Failed to create output file")?;
 
     let mut encoder = gif::Encoder::new(
         &mut image,
-        video.scaler.input().width.try_into().unwrap(),
-        video.scaler.input().height.try_into().unwrap(),
-        &[]
-    ).unwrap();
+        width.try_into()?,
+        height.try_into()?,
+        &[],
+    )?;
 
-    for frame_pixels in pixels_per_frame.iter_mut() {
+    for frame_data in data_per_frame.iter_mut() {
         let frame = gif::Frame::from_rgb(
-            video.scaler.input().width as u16,
-            video.scaler.input().height as u16,
-            &mut *frame_pixels
+            width.try_into()?,
+            height.try_into()?,
+            frame_data,
         );
 
-        encoder.write_frame(&frame).unwrap();
+        encoder.write_frame(&frame)?;
     }
 
-    let system_duration = start.elapsed().expect("Failed to get render time?");
+    let system_duration = start.elapsed().context("Failed to get render time")?;
     let in_sec = system_duration.as_secs() as f64 + system_duration.subsec_nanos() as f64 * 1e-9;
     println!("Execution time: {} sec", in_sec);
 
     Ok(())
 }
 
-fn dump_pixels_from_video(video: &mut DecodedVideo) -> Result<Vec<u8>, ffmpeg::Error> {
+/**
+ * Returns a Vec of bytes for every channel in every pixel in every frame
+ * of the video. For example, if the first pixel of the first frame is red,
+ * the returned vector's first three elements will be 255, 0, and 0.
+ *
+ * Inspired by [this example](https://github.com/zmwangx/rust-ffmpeg/blob/22ad8b959879efa028c33f71cc286b519eae8066/examples/dump-frames.rs).
+*/
+fn get_video_data(video: &mut DecodedVideo) -> Result<Vec<u8>> {
     let mut pixels: Vec<u8> = Vec::new();
     let mut frame_index = 0;
 
     let mut receive_and_process_decoded_frames =
-        |decoder: &mut ffmpeg::decoder::Video| -> Result<(), ffmpeg::Error> {
+        |decoder: &mut ffmpeg::decoder::Video| -> Result<()> {
             let mut decoded = Video::empty();
 
             while decoder.receive_frame(&mut decoded).is_ok() {
                 let mut rgb_frame = Video::empty();
                 video.scaler.run(&decoded, &mut rgb_frame)?;
                 pixels.extend_from_slice(rgb_frame.data(0));
-
                 frame_index += 1;
             }
 
@@ -85,7 +100,7 @@ fn dump_pixels_from_video(video: &mut DecodedVideo) -> Result<Vec<u8>, ffmpeg::E
     Ok(pixels)
 }
 
-fn decode_video(filename: &str) -> Result<DecodedVideo, ffmpeg::Error> {
+fn decode_video(filename: &str) -> Result<DecodedVideo> {
     let ictx = input(&filename)?;
 
     let input = ictx
@@ -110,7 +125,7 @@ fn decode_video(filename: &str) -> Result<DecodedVideo, ffmpeg::Error> {
         Flags::BILINEAR,
     )?;
 
-    return Ok(DecodedVideo {
+    Ok(DecodedVideo {
         ictx,
         video_stream_index,
         decoder,
