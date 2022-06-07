@@ -1,11 +1,14 @@
 extern crate ffmpeg_next as ffmpeg;
 
 use std::fs::File;
+use std::time::{SystemTime};
 
-use ffmpeg::format::{Pixel, input};
-use ffmpeg::frame::Video;
-use ffmpeg::media::Type;
-use ffmpeg::software::scaling::{Context, Flags};
+use { 
+    ffmpeg::format::{Pixel, input},
+    ffmpeg::frame::Video,
+    ffmpeg::media::Type,
+    ffmpeg::software::scaling::{Context, Flags},
+};
 
 struct DecodedVideo {
     pub ictx: ffmpeg::format::context::Input,
@@ -15,6 +18,7 @@ struct DecodedVideo {
 }
 
 pub fn encode_gif(filename: &str) -> Result<(), ffmpeg::Error> {
+    let start = SystemTime::now();
     let mut video = decode_video(filename)?;
     let pixels: Vec<u8> = dump_pixels_from_video(&mut video)?;
 
@@ -22,6 +26,7 @@ pub fn encode_gif(filename: &str) -> Result<(), ffmpeg::Error> {
         (video.scaler.input().width * video.scaler.input().height * 3).try_into().unwrap()
     ).collect();
 
+    // TODO: tem que tirar o .mp4 do filename pra salvar o gif?
     let mut image = File::create(format!("{}.gif", filename)).unwrap();
 
     let mut encoder = gif::Encoder::new(
@@ -41,15 +46,16 @@ pub fn encode_gif(filename: &str) -> Result<(), ffmpeg::Error> {
         encoder.write_frame(&frame).unwrap();
     }
 
+    let system_duration = start.elapsed().expect("Failed to get render time?");
+    let in_sec = system_duration.as_secs() as f64 + system_duration.subsec_nanos() as f64 * 1e-9;
+    println!("Execution time: {} sec", in_sec);
+
     Ok(())
 }
 
 fn dump_pixels_from_video(video: &mut DecodedVideo) -> Result<Vec<u8>, ffmpeg::Error> {
     let mut pixels: Vec<u8> = Vec::new();
     let mut frame_index = 0;
-
-    dbg!(&video.scaler.input().width);
-    dbg!(&video.scaler.input().height);
 
     let mut receive_and_process_decoded_frames =
         |decoder: &mut ffmpeg::decoder::Video| -> Result<(), ffmpeg::Error> {
@@ -59,8 +65,6 @@ fn dump_pixels_from_video(video: &mut DecodedVideo) -> Result<Vec<u8>, ffmpeg::E
                 let mut rgb_frame = Video::empty();
                 video.scaler.run(&decoded, &mut rgb_frame)?;
                 pixels.extend_from_slice(rgb_frame.data(0));
-
-                dbg!(&pixels.len());
 
                 frame_index += 1;
             }
