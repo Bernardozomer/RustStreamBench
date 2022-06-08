@@ -9,4 +9,14 @@ edition = "2021"
 anyhow = "1.0.57"
 ffmpeg-next = "5.0.3"
 gif = "0.11.3"
+
+# Rust-SSP
 rust-ssp = { path = "~/../../libs/rust-ssp", package = "rust-spp" }
+
+# Tokio
+tokio = "0.1.19"
+futures = "0.1"
+tokio-core = "0.1.17"
+
+# Rayon
+rayon = "1.5"
