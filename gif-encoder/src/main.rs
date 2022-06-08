@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 mod core;
 mod sequential;
 mod rayon;
+mod rust_ssp;
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -24,13 +25,17 @@ fn main() -> Result<()> {
     match runtime.as_str() {
         "sequential" => sequential::encode_gif(&filename)?,
         "rayon" => rayon::encode_gif(&filename, threads)?,
-        _ => panic!("Invalid runtime, use: sequential | rust-ssp")
+        "rust-ssp" => rust_ssp::encode_gif(&filename, threads)?,
+        _ => panic!("Invalid runtime, use: sequential | rayon | rust-ssp")
     }
 
     let system_duration = start
         .elapsed()
         .context("Failed to get render time")?;
-    let in_sec = system_duration.as_secs() as f64 + system_duration.subsec_nanos() as f64 * 1e-9;
+
+    let in_sec = system_duration.as_secs() as f64
+        + system_duration.subsec_nanos() as f64 * 1e-9;
+
     println!("Execution time: {} sec", in_sec);
 
     Ok(())

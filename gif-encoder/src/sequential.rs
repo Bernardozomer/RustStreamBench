@@ -1,5 +1,3 @@
-extern crate ffmpeg_next as ffmpeg;
-
 use std::fs::File;
 
 use anyhow::{Context, Result, Ok};
@@ -12,9 +10,8 @@ pub fn encode_gif(filename: &str) -> Result<()> {
     let (width, height) = core::get_video_dimensions(&filename)?;
 
     // Separate the video data into frames.
-    let mut data_per_frame: Vec<&[u8]> = data.chunks(
-        (width * height * 3).try_into()?
-    ).collect();
+    let mut data_per_frame: Vec<&[u8]> = data.chunks(width * height * 3)
+        .collect();
 
     // Encode the GIF frames and write them to a file.
     let mut image = File::create(format!("{}.gif", filename))
