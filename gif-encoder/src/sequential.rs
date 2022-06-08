@@ -1,33 +1,18 @@
 extern crate ffmpeg_next as ffmpeg;
 
 use std::fs::File;
+use std::process::Command;
 use std::time::SystemTime;
 
-use anyhow::Context as AnyhowContext;
-use anyhow::Result;
-
-use {
-    ffmpeg::format::{Pixel, input},
-    ffmpeg::frame::Video,
-    ffmpeg::media::Type,
-    ffmpeg::software::scaling::{Context, Flags},
-};
-
-struct DecodedVideo {
-    pub ictx: ffmpeg::format::context::Input,
-    pub video_stream_index: usize,
-    pub decoder: ffmpeg::decoder::Video,
-    pub scaler: Context,
-}
+use anyhow::{Context, Result, Ok};
+use ffmpeg::format::input;
 
 pub fn encode_gif(filename: &str) -> Result<()> {
     let start = SystemTime::now();
 
     // Get video data.
-    let mut video = decode_video(filename)?;
-    let data: Vec<u8> = get_video_data(&mut video)?;
-    let width = video.scaler.input().width;
-    let height = video.scaler.input().height;
+    let data: Vec<u8> = get_video_data(&filename)?;
+    let (width, height) = get_video_dimensions(&filename)?;
 
     // Separate the video data into frames.
     let mut data_per_frame: Vec<&[u8]> = data.chunks(
@@ -66,70 +51,27 @@ pub fn encode_gif(filename: &str) -> Result<()> {
  * Returns a Vec of bytes for every channel in every pixel in every frame
  * of the video. For example, if the first pixel of the first frame is red,
  * the returned vector's first three elements will be 255, 0, and 0.
- *
- * Inspired by [this example](https://github.com/zmwangx/rust-ffmpeg/blob/22ad8b959879efa028c33f71cc286b519eae8066/examples/dump-frames.rs).
 */
-fn get_video_data(video: &mut DecodedVideo) -> Result<Vec<u8>> {
-    let mut data: Vec<u8> = Vec::new();
-    let mut frame_index = 0;
+fn get_video_data(filename: &str) -> Result<Vec<u8>> {
+    let cmd = Command::new("ffmpeg")
+        .args(["-i", filename, "-pix_fmt", "rgb24", "-f", "rawvideo", "-"])
+        .output()
+        .context("Failed to extract frames")?;
 
-    let mut receive_and_process_decoded_frames =
-        |decoder: &mut ffmpeg::decoder::Video| -> Result<()> {
-            let mut decoded = Video::empty();
-
-            while decoder.receive_frame(&mut decoded).is_ok() {
-                let mut rgb_frame = Video::empty();
-                video.scaler.run(&decoded, &mut rgb_frame)?;
-                data.extend_from_slice(rgb_frame.data(0));
-                frame_index += 1;
-            }
-
-            Ok(())
-        };
-
-    for (stream, packet) in video.ictx.packets() {
-        if stream.index() == video.video_stream_index {
-            video.decoder.send_packet(&packet)?;
-            receive_and_process_decoded_frames(&mut video.decoder)?;
-        }
-    }
-
-    video.decoder.send_eof()?;
-    receive_and_process_decoded_frames(&mut video.decoder)?;
-
-    Ok(data)
+    Ok(cmd.stdout.into_iter().collect())
 }
 
-fn decode_video(filename: &str) -> Result<DecodedVideo> {
-    let ictx = input(&filename)?;
+fn get_video_dimensions(filename: &str) -> Result<(usize, usize)> {
+    let input_ctx = input(&filename)?;
 
-    let input = ictx
+    let input = input_ctx
         .streams()
-        .best(Type::Video)
+        .best(ffmpeg::media::Type::Video)
         .ok_or(ffmpeg::Error::StreamNotFound)?;
-    let video_stream_index = input.index();
 
-    let context_decoder = ffmpeg::codec::context::Context::from_parameters(
+    let decoder = ffmpeg::codec::context::Context::from_parameters(
         input.parameters()
-    )?;
+    )?.decoder().video()?;
 
-    let decoder = context_decoder.decoder().video()?;
-
-    let scaler = Context::get(
-        decoder.format(),
-        decoder.width(),
-        decoder.height(),
-        Pixel::RGB24,
-        decoder.width(),
-        decoder.height(),
-        Flags::BILINEAR,
-    )?;
-
-    Ok(DecodedVideo {
-        ictx,
-        video_stream_index,
-        decoder,
-        scaler,
-    })
+    Ok((decoder.width().try_into()?, decoder.height().try_into()?))
 }
-
