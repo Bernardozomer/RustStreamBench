@@ -19,15 +19,15 @@ pub fn encode_gif(filename: &str) -> Result<()> {
 
     let mut encoder = gif::Encoder::new(
         &mut image,
-        width.try_into()?,
-        height.try_into()?,
+        width as u16,
+        height as u16,
         &[],
     )?;
 
     for frame_data in data_per_frame.iter_mut() {
         let frame = gif::Frame::from_rgb(
-            width.try_into()?,
-            height.try_into()?,
+            width as u16,
+            height as u16,
             frame_data,
         );
 

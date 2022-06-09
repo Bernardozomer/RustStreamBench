@@ -1,6 +1,6 @@
 use std::fs::File;
 
-use anyhow::{Context, Result, Ok};
+use anyhow::{Context, Result};
 use gif::Frame;
 use rust_ssp::*;
 
@@ -38,7 +38,8 @@ pub fn encode_gif(filename: &str, threads: usize) -> Result<()> {
     ];
 
     for frame_data in data_per_frame.into_iter() {
-        pipeline.post(frame_data).unwrap();
+        pipeline.post(frame_data).ok()
+            .context("Failed to post data to pipeline")?;
     }
 
     // Sort the frames into the correct order.
@@ -51,12 +52,12 @@ pub fn encode_gif(filename: &str, threads: usize) -> Result<()> {
 
     let mut encoder = gif::Encoder::new(
         &mut image,
-        width.try_into()?,
-        height.try_into()?,
+        width as u16,
+        height as u16,
         &[],
     )?;
 
-    for frame in frames.iter() {
+    for frame in frames {
         encoder.write_frame(&frame.0)?;
     }
 
