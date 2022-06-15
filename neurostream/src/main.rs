@@ -2,28 +2,45 @@ use std::{env, time::SystemTime};
 
 use anyhow::{Context, Result};
 
-// mod sequential;
+mod core;
+mod sequential;
 // mod rayon;
 // mod rust_ssp;
+
+const MOMENTUM: f64 = 0.05;
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 3 {
+    if args.len() < 6 {
         panic!(
-            "Correct usage: $ ./{:?} <runtime> <nthreads>",
+            "Correct usage: $ ./{:?} <runtime> <nthreads> <app> <learning rate> <iterations>",
             args[0]
         );
     }
 
     let runtime = &args[1];
     let threads = args[2].parse::<usize>()?;
+    let app = &args[3];
+    let learning_rate = args[4].parse::<f64>()?;
+    let iterations = args[6].parse::<i64>()?;
     let start = SystemTime::now();
 
+    let architecture: &[i32] = match app.as_str() {
+        "segmentation" => &[19, 38, 38, 1],
+        _ => panic!("Invalid app, use: segmentation"),
+    };
+
     match runtime.as_str() {
-        // "sequential" =>
-        // "rayon" =>
-        // "rust-ssp" =>
+        "sequential" => sequential::run(
+            app, architecture, learning_rate, MOMENTUM, iterations
+        )?,
+        // "rayon" => rayon::run(
+        //     app, architecture, learning_rate, MOMENTUM, iterations, threads
+        // )?,
+        // "rust-ssp" => rust_ssp::run(
+        //     app, architecture, learning_rate, MOMENTUM, iterations, threads
+        // )?,
         _ => panic!("Invalid runtime, use: sequential | rayon | rust-ssp")
     }
 
