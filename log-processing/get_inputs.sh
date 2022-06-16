@@ -9,7 +9,7 @@ mkdir inputs
 curl --silent -o inputs/http-server.log $LOG_URL
 
 if curl --silent -o inputs/${FILE_NAME}.tar.gz $DB_URL; then
-	tar -xf inputs/${FILE_NAME}.mmdb.tar.gz -C inputs/
+	tar -xf inputs/${FILE_NAME}.tar.gz -C inputs/
 else
 	echo "Failed to download database"
 fi
