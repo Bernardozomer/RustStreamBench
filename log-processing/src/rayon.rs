@@ -33,7 +33,7 @@ pub fn parse_log(filename: &str, ip_db_path: &str, threads: usize) -> Result<()>
             let mut status_freq = HashMap::<String, usize>::new();
     
             if fields.len() != 10 {
-                println!("Illegal entry in file: {}", entry);
+                eprintln!("Illegal entry in file: {}", entry);
             }
     
             // Ignore any errors found during parsing of the ip address
