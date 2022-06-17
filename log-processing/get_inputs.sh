@@ -14,3 +14,4 @@ else
 	echo "Failed to download database"
 fi
 
+rm inputs/GeoLite2-City.tar.gz

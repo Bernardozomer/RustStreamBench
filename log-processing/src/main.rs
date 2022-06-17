@@ -3,7 +3,7 @@ use std::{env, time::SystemTime};
 use anyhow::{Context, Result};
 
 mod sequential;
-// mod rayon;
+mod rayon;
 // mod rust_ssp;
 
 fn main() -> Result<()> {
@@ -24,7 +24,7 @@ fn main() -> Result<()> {
 
     match runtime.as_str() {
         "sequential" => sequential::parse_log(&filename, &ip_db_path)?,
-        // "rayon" => rayon::parse_log(&filename, threads)?,
+        "rayon" => rayon::parse_log(&filename, &ip_db_path, threads)?,
         // "rust-ssp" => rust_ssp::parse_log(&filename, threads)?,
         _ => panic!("Invalid runtime, use: sequential | rayon | rust-ssp")
     }
